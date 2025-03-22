@@ -58,7 +58,7 @@ def parse_input_with_gpt(user_text: str, langfuse_client) -> dict:
         "\n"
         "3) Dodatkowe dane:\n"
         "   - Wiek: jeśli brak → 0,\n"
-        "   - Płeć: M lub K (jeśli brak → M),\n"
+        "   - Płeć: M lub K. Domyślnie przyjmij M, ale jeśli imię lub tekst wskazuje wyraźnie na kobietę (np. Janina), wybierz K. Spróbuj rozpoznać płeć na podstawie imienia i kontekstu, nawet jeśli nie została jawnie podana.\n"
         "   - Imię: jeśli brak → \"Anonimowe\",\n"
         "   - Nazwisko: jeśli brak → \"Anonimowe\",\n"
         "   - Miasto: jeśli brak → \"Nie podano\",\n"
@@ -122,71 +122,44 @@ def load_data() -> pd.DataFrame:
     return df
 
 def process_ranking(final_time_sec, final_gender, final_city, final_team, final_name1, final_name2, final_age, df_rank) -> dict:
-    """
-    Aktualizuje ranking na podstawie danych użytkownika:
-      - Znajduje wiersz z najbliższym czasem,
-      - Nadpisuje dane użytkownika,
-      - Oblicza miejsce oraz tempo.
-    Zwraca słownik z wynikami.
-    """
-
-
-
-    # Znalezienie najbliższego czasu
-    df_rank["Czas_diff"] = abs(df_rank["Czas_sec"] - final_time_sec)
-    closest_index = df_rank["Czas_diff"].idxmin()
-    row_to_replace = df_rank.loc[closest_index].copy()
-
-    # Aktualizacja danych użytkownika:
-    # Zapisujemy dane w wersji uppercase (dla Imienia, Nazwiska i Miasta)
-    row_to_replace["Miasto"] = final_city
-    row_to_replace["Drużyna"] = final_team
-    row_to_replace["Imię"] = final_name1
-    row_to_replace["Nazwisko"] = final_name2
-    # Zapisujemy czas w formacie hh:mm:ss
-    row_to_replace["Czas"] = seconds_to_hhmmss(final_time_sec)
-    row_to_replace["Czas_sec"] = final_time_sec
-    row_to_replace["Płeć"] = final_gender
-    # Obliczamy kategorię wiekową: litera z Płeć + pierwsza cyfra z wieku + "0"
-    row_to_replace["Kategoria wiekowa"] = f"{final_gender}{str(final_age)[0]}0"
-
-    df_gender = df_rank[df_rank["Płeć"] == final_gender].copy()
-    user_gender_place = (df_gender["Czas_sec"] < final_time_sec).sum() + 1
-    row_to_replace["Płeć Miejsce"] = user_gender_place
-
-
-    # Oblicz miejsce użytkownika w swojej kategorii wiekowej
-    df_category = df_rank[df_rank["Kategoria wiekowa"] == row_to_replace["Kategoria wiekowa"]].copy()
-    user_cat_place = (df_category["Czas_sec"] < final_time_sec).sum() + 1
-    row_to_replace["Kategoria wiekowa Miejsce"] = user_cat_place
-
-
-    # Obliczenia związane z rankingiem
+    user_category = f"{final_gender}{str(final_age)[0]}0"
     best_time_sec = df_rank["Czas_sec"].min()
-    df_rank_sorted = df_rank.sort_values("Miejsce").reset_index(drop=True)
-    user_place = int((df_rank_sorted["Czas_sec"] < final_time_sec).sum() + 1)
-    user_index = user_place - 1  # Indeks zgodny z miejscem
 
-    # Nadpisanie wiersza użytkownika, jeśli indeks jest poprawny
-    if user_index < len(df_rank_sorted):
-        df_rank_sorted.loc[user_index, ["Miejsce", "Imię", "Nazwisko", "Miasto", "Płeć", "Wiek", "Drużyna", "Kategoria wiekowa", "Czas", "Czas_sec"]] = [
-            user_place, final_name1, final_name2, final_city, final_gender, final_age, final_team, f"{final_gender}{str(final_age)[0]}0",  seconds_to_hhmmss(final_time_sec), final_time_sec
-        ]
-    else:
-        st.warning("Nie udało się zaktualizować rankingu użytkownika – indeks poza zakresem.")
-
-    # Konwersja kolumn z miejscami na typ całkowity
-    df_rank_sorted["Miejsce"] = df_rank_sorted["Miejsce"].astype(int)
-    df_rank_sorted["Płeć Miejsce"] = df_rank_sorted["Płeć Miejsce"].astype(int)
-    df_rank_sorted["Kategoria wiekowa Miejsce"] = df_rank_sorted["Kategoria wiekowa Miejsce"].astype(int)
-
-    # Obliczenie tempa (km/h)
-    user_speed = round(60 / row_to_replace["Tempo"], 2)
-    best_speed = round(60 / df_rank[df_rank["Czas_sec"] == best_time_sec]["Tempo"].iloc[0], 2)
+    # Obliczenie tempa
+    user_speed = round(21.0975 / (final_time_sec / 3600), 2)
+    best_speed = round(21.0975 / (best_time_sec / 3600), 2)
     time_diff = best_time_sec - final_time_sec
 
+    # Dodajemy nowy wiersz użytkownika
+    user_row = {
+        "Imię": final_name1,
+        "Nazwisko": final_name2,
+        "Miasto": final_city,
+        "Płeć": final_gender,
+        "Wiek": final_age,
+        "Drużyna": final_team,
+        "Kategoria wiekowa": user_category,
+        "Czas_sec": final_time_sec,
+        "Czas": seconds_to_hhmmss(final_time_sec),
+        "km/h": user_speed
+    }
+
+    df_rank_with_user = pd.concat([df_rank, pd.DataFrame([user_row])], ignore_index=True)
+
+    # Sortowanie po czasie
+    df_sorted = df_rank_with_user.sort_values("Czas_sec").reset_index(drop=True)
+    df_sorted["Miejsce"] = df_sorted.index + 1
+
+    # Znalezienie indeksu użytkownika
+    user_index = df_sorted[
+        (df_sorted["Imię"] == final_name1) &
+        (df_sorted["Nazwisko"] == final_name2) &
+        (df_sorted["Czas_sec"] == final_time_sec)
+    ].index[0]
+    user_place = int(df_sorted.loc[user_index, "Miejsce"])
+
     return {
-        "df_rank_sorted": df_rank_sorted,
+        "df_rank_sorted": df_sorted,
         "user_place": user_place,
         "user_index": user_index,
         "user_speed": user_speed,
@@ -195,44 +168,48 @@ def process_ranking(final_time_sec, final_gender, final_city, final_team, final_
         "time_diff": time_diff,
     }
 
+
 def highlight_user(row, user_place):
     """Funkcja stylizująca wiersz użytkownika w tabeli."""
     if row["Miejsce"] == user_place:
         return ['background-color: rgba(255, 215, 0, 0.3)'] * len(row)
     return [''] * len(row)
 
+def highlight_user(row, user_place):
+    if row["Miejsce"] == user_place:
+        return ['background-color: rgba(255, 215, 0, 0.3)'] * len(row)
+    return [''] * len(row)
+
 def display_ranking(df_rank_sorted, user_index, user_place):
     st.markdown("<h3 style='text-align: left;'>🏆 TOP RANKING</h3>", unsafe_allow_html=True)
-    # Wyświetla ranking – top 5, jeśli zawodnik jest w pierwszej piątce, lub top 10 w pozostałych przypadkach, ukrywając indeks.
+
     ranking_cols = [
-        "Miejsce", "Czas", "km/h", "Imię", "Nazwisko", "Miasto",
-        "Płeć", "Wiek", "Drużyna", "Płeć Miejsce", "Kategoria wiekowa",
-        "Kategoria wiekowa Miejsce"
+        "Miejsce", "Czas", "km/h", "Imię", "Nazwisko",
+        "Miasto", "Płeć", "Wiek", "Drużyna", "Kategoria wiekowa"
     ]
-    
-    # Jeśli zawodnik jest w pierwszej piątce, wyświetlamy top 10, w przeciwnym razie top 5
+
+    # Top tabela
     if user_place <= 10:
-        top_n = df_rank_sorted.sort_values("Miejsce").head(10)[ranking_cols]
+        top_n = df_rank_sorted.head(10)[ranking_cols]
     else:
-        top_n = df_rank_sorted.sort_values("Miejsce").head(5)[ranking_cols]
-    
+        top_n = df_rank_sorted.head(5)[ranking_cols]
+
     st.dataframe(
         top_n.style.hide(axis="index")
-             .format({"km/h": "{:.2f}"})
-             .apply(lambda row: highlight_user(row, user_place) if row.name == user_index else [''] * len(row), axis=1)
+            .format({"km/h": "{:.2f}"})
+            .apply(lambda row: highlight_user(row, user_place), axis=1)
     )
 
-
     if user_place > 10:
-        lower_bound = max(user_index - 5, 0)
-        upper_bound = min(user_index + 5, len(df_rank_sorted) - 1)
-        nearby_runners = df_rank_sorted.iloc[lower_bound:upper_bound + 1][ranking_cols]
-
         st.markdown("<h4 style='text-align: left;'>📊 Twoja pozycja w rankingu</h4>", unsafe_allow_html=True)
+        lower = max(user_index - 5, 0)
+        upper = min(user_index + 5, len(df_rank_sorted) - 1)
+        nearby = df_rank_sorted.iloc[lower:upper + 1][ranking_cols]
+
         st.dataframe(
-            nearby_runners.style.hide(axis="index")
+            nearby.style.hide(axis="index")
                 .format({"km/h": "{:.2f}"})
-                .apply(lambda row: highlight_user(row, user_place) if row.name == user_index else [''] * len(row), axis=1)
+                .apply(lambda row: highlight_user(row, user_place), axis=1)
         )
 
 
@@ -299,6 +276,8 @@ def main():
 
             final_time_sec = gpt_result["Czas_sec"]
 
+            # with st.expander("🔍 Co GPT wyciągnął z Twoich danych?"):
+                # st.json(gpt_result)
             
             if gpt_result["Czas_sec"] < 1800:
                 st.warning("⚠️ Szybko biegasz, ale niestety Super-Bohaterowie jak Ty nie mogą startować w tym maratonie. ")
