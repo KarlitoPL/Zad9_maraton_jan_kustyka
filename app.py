@@ -36,22 +36,22 @@ class ParseInputResponse(BaseModel):
     Drużyna: str
     Wiek: int
     Płeć: str
-    Czas_sec: float
+    Czas: float  # czas w sekundach
+    Dystans: float  # dystans w kilometrach
+
 
 
 def parse_input_with_gpt(user_text: str, langfuse_client) -> dict:
     """Wywołuje GPT i śledzi z Langfuse cały proces parsowania."""
     system_prompt = (
-        "Jesteś asystentem, który otrzymuje tekst użytkownika i ma za zadanie wyodrębnić dane oraz policzyć wynik zgodnie z poniższymi zasadami:\n"
+        "Jesteś asystentem, który otrzymuje tekst użytkownika i ma za zadanie wyodrębnić dane:\n"
         "\n"
-        "1) Użytkownik może podać długość trasy np. 10 km, 600 metrów  oraz czas, w którym tą trase pokonał (np. \"45 minut\", \"1h 30min\", \"01:35:00\").\n"
+        "1) Wyciągnij dystans, np. „10 km”, „5000 metrów” (jeśli brak → 0).\n"
+        "2) Wyciągnij czas, np. „45 minut”, „1h 30min”, „01:35:00” (jeśli brak → 0).\n"
         "\n"
-        "2) Oblicz średni czas w sekundach z tego czasu i długości trasy na 1 kilometr, a następnie przemnóż ten czas w sekundach/1 km przez 21.0975, aby otrzymać Czas_sec — prognozowany czas użytkownika na półmaraton:\n"
-        "   - Przykład: 10 km w 45 minut → 270 sekund/km → Czas_sec = 270 * 21.0975 = 5696 sekund.\n"
+        "Nie licz Czas_sec – to zostanie obliczone osobno w kodzie.\n"
         "\n"
-        "3) Jeśli nie da się wyodrębnić czasu lub dystansu, ustaw Czas_sec = 0.\n"
-        "\n"
-        "4) Dodatkowe dane:\n"
+        "3) Dodatkowe dane:\n"
         "   - Wiek: jeśli brak → 0,\n"
         "   - Płeć: M lub K (jeśli brak → M),\n"
         "   - Imię: jeśli brak → \"Anonimowe\",\n"
@@ -59,10 +59,10 @@ def parse_input_with_gpt(user_text: str, langfuse_client) -> dict:
         "   - Miasto: jeśli brak → \"Nie podano\",\n"
         "   - Drużyna: jeśli brak → \"Brak drużyny\".\n"
         "\n"
-        "Zwróć WYŁĄCZNIE obiekt JSON w formacie:\n"
-        "{\"Wiek\":..., \"Płeć\":\"...\", \"Czas_sec\":..., \"Imię\":\"...\", \"Nazwisko\":\"...\", \"Miasto\":\"...\", \"Drużyna\":\"...\"}\n"
+        "Zwróć WYŁĄCZNIE obiekt JSON:\n"
+        "{\"Wiek\":..., \"Płeć\":\"...\", \"Imię\":\"...\", \"Nazwisko\":\"...\", \"Miasto\":\"...\", \"Drużyna\":\"...\", \"Czas\":..., \"Dystans\":...}\n"
         "\n"
-        "Bez komentarzy, bez dodatkowych pól, bez tłumaczenia. Tylko czysty JSON."
+        "Bez komentarzy i dodatkowych pól."
     )
 
     messages = [
@@ -124,8 +124,8 @@ def process_ranking(final_time_sec, final_gender, final_city, final_team, final_
       - Oblicza miejsce oraz tempo.
     Zwraca słownik z wynikami.
     """
-    if "Tempo" not in df_rank.columns:
-        return {"error": "Brak kolumny 'Tempo' w danych rankingowych."}
+
+
 
     # Znalezienie najbliższego czasu
     df_rank["Czas_diff"] = abs(df_rank["Czas_sec"] - final_time_sec)
@@ -145,16 +145,16 @@ def process_ranking(final_time_sec, final_gender, final_city, final_team, final_
     # Obliczamy kategorię wiekową: litera z Płeć + pierwsza cyfra z wieku + "0"
     row_to_replace["Kategoria wiekowa"] = f"{final_gender}{str(final_age)[0]}0"
 
-    # Aktualizacja miejsc (Płeć Miejsce i Kategoria wiekowa Miejsce)
-    if row_to_replace["Płeć"] == final_gender:
-        row_to_replace["Płeć Miejsce"] = df_rank.loc[closest_index, "Płeć Miejsce"]
-    else:
-        row_to_replace["Płeć Miejsce"] = df_rank[df_rank["Płeć"] == final_gender]["Płeć Miejsce"].min()
+    df_gender = df_rank[df_rank["Płeć"] == final_gender].copy()
+    user_gender_place = (df_gender["Czas_sec"] < final_time_sec).sum() + 1
+    row_to_replace["Płeć Miejsce"] = user_gender_place
 
-    if row_to_replace["Kategoria wiekowa"] == df_rank.loc[closest_index, "Kategoria wiekowa"]:
-        row_to_replace["Kategoria wiekowa Miejsce"] = df_rank.loc[closest_index, "Kategoria wiekowa Miejsce"]
-    else:
-        row_to_replace["Kategoria wiekowa Miejsce"] = df_rank[df_rank["Kategoria wiekowa"] == row_to_replace["Kategoria wiekowa"]]["Kategoria wiekowa Miejsce"].min()
+
+    # Oblicz miejsce użytkownika w swojej kategorii wiekowej
+    df_category = df_rank[df_rank["Kategoria wiekowa"] == row_to_replace["Kategoria wiekowa"]].copy()
+    user_cat_place = (df_category["Czas_sec"] < final_time_sec).sum() + 1
+    row_to_replace["Kategoria wiekowa Miejsce"] = user_cat_place
+
 
     # Obliczenia związane z rankingiem
     best_time_sec = df_rank["Czas_sec"].min()
@@ -281,9 +281,18 @@ def main():
         else:
             gpt_result = parse_input_with_gpt(user_text, langfuse_client)
 
-            with st.expander("🔍 Zobacz, co zrozumiał GPT"):
-                st.json(gpt_result)
 
+            czas_w_sekundach = gpt_result["Czas"]
+            dystans_w_km = gpt_result["Dystans"]
+
+            if czas_w_sekundach > 0 and dystans_w_km > 0:
+                tempo_sec_per_km = czas_w_sekundach / dystans_w_km
+                czas_na_polmaraton = tempo_sec_per_km * 21.0975
+                gpt_result["Czas_sec"] = int(czas_na_polmaraton)
+            else:
+                gpt_result["Czas_sec"] = 0
+
+            final_time_sec = gpt_result["Czas_sec"]
             
             if gpt_result["Czas_sec"] < 1800:
                 st.warning("⚠️ Szybko biegasz, ale niestety Super-Bohaterowie jak Ty nie mogą startować w tym maratonie. ")
