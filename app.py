@@ -36,7 +36,7 @@ class ParseInputResponse(BaseModel):
     Drużyna: str
     Wiek: int
     Płeć: str
-    Czas: float  # czas w sekundach
+    Czas: int  # czas w sekundach
     Dystans: float  # dystans w kilometrach
 
 
@@ -44,12 +44,17 @@ class ParseInputResponse(BaseModel):
 def parse_input_with_gpt(user_text: str, langfuse_client) -> dict:
     """Wywołuje GPT i śledzi z Langfuse cały proces parsowania."""
     system_prompt = (
-        "Jesteś asystentem, który otrzymuje tekst użytkownika i ma za zadanie wyodrębnić dane:\n"
+       "Jesteś asystentem, który otrzymuje swobodnie napisany tekst użytkownika i ma za zadanie wyodrębnić dane:\n"
         "\n"
-        "1) Wyciągnij dystans, np. „10 km”, „5000 metrów” (jeśli brak → 0).\n"
-        "2) Wyciągnij czas, np. „45 minut”, „1h 30min”, „01:35:00” (jeśli brak → 0).\n"
+        "1) Wyciągnij dystans pokonany przez użytkownika jako liczbę w kilometrach (float).\n"
+        "   - Akceptowane formaty: „10 km”, „5 kilometrów”, „5000 metrów” itp.\n"
+        "   - Zamień wszystko na kilometry (np. 5000 metrów → 5.0). Jeśli nie podano, ustaw 0.0.\n"
         "\n"
-        "Nie licz Czas_sec – to zostanie obliczone osobno w kodzie.\n"
+        "2) Wyciągnij czas jako liczbę sekund (int).\n"
+        "   - Akceptowane formaty: „45 minut”, „1h 30min”, „01:35:00”, „3600s” itp.\n"
+        "   - Zamień wszystko na liczbę sekund (np. 45 minut → 2700). Jeśli nie podano, ustaw 0.\n"
+        "\n"
+        "Nie obliczaj czasu półmaratonu (`Czas_sec`) – to zrobi kod.\n"
         "\n"
         "3) Dodatkowe dane:\n"
         "   - Wiek: jeśli brak → 0,\n"
@@ -59,10 +64,10 @@ def parse_input_with_gpt(user_text: str, langfuse_client) -> dict:
         "   - Miasto: jeśli brak → \"Nie podano\",\n"
         "   - Drużyna: jeśli brak → \"Brak drużyny\".\n"
         "\n"
-        "Zwróć WYŁĄCZNIE obiekt JSON:\n"
+        "Zwróć WYŁĄCZNIE obiekt JSON w formacie:\n"
         "{\"Wiek\":..., \"Płeć\":\"...\", \"Imię\":\"...\", \"Nazwisko\":\"...\", \"Miasto\":\"...\", \"Drużyna\":\"...\", \"Czas\":..., \"Dystans\":...}\n"
         "\n"
-        "Bez komentarzy i dodatkowych pól."
+        "Bez komentarzy, bez dodatkowych pól, bez tłumaczenia. Tylko czysty JSON."
     )
 
     messages = [
@@ -282,8 +287,8 @@ def main():
             gpt_result = parse_input_with_gpt(user_text, langfuse_client)
 
 
-            czas_w_sekundach = gpt_result["Czas"]
-            dystans_w_km = gpt_result["Dystans"]
+            czas_w_sekundach = float(gpt_result.get("Czas", 0))
+            dystans_w_km = float(gpt_result.get("Dystans", 0))
 
             if czas_w_sekundach > 0 and dystans_w_km > 0:
                 tempo_sec_per_km = czas_w_sekundach / dystans_w_km
@@ -293,6 +298,7 @@ def main():
                 gpt_result["Czas_sec"] = 0
 
             final_time_sec = gpt_result["Czas_sec"]
+
             
             if gpt_result["Czas_sec"] < 1800:
                 st.warning("⚠️ Szybko biegasz, ale niestety Super-Bohaterowie jak Ty nie mogą startować w tym maratonie. ")
