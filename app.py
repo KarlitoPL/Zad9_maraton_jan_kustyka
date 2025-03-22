@@ -206,7 +206,7 @@ def display_ranking(df_rank_sorted, user_index, user_place):
     ]
     
     # Jeśli zawodnik jest w pierwszej piątce, wyświetlamy top 10, w przeciwnym razie top 5
-    if user_place <= 5:
+    if user_place <= 10:
         top_n = df_rank_sorted.sort_values("Miejsce").head(10)[ranking_cols]
     else:
         top_n = df_rank_sorted.sort_values("Miejsce").head(5)[ranking_cols]
