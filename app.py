@@ -32,12 +32,6 @@ class ParseInputResponse(BaseModel):
     Płeć: str
     Czas_sec: float
 
-def configure_clients():
-    """Konfiguracja klienta OpenAI oraz Instructor."""
-    env = dotenv_values(".env")
-    openai_client = OpenAI(api_key=env["OPENAI_API_KEY"])
-    instructor_client = instructor.from_openai(openai_client)
-    return instructor_client
 
 def parse_input_with_gpt(user_text: str, langfuse_client) -> dict:
     """Wywołuje GPT i śledzi z Langfuse cały proces parsowania."""
