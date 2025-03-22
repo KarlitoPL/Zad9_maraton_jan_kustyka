@@ -246,7 +246,7 @@ def main():
         """
         <p style="font-size:1rem; color:#555; text-align:center; line-height:1.6;">
             Opowiedz o sobie – jak przy zapisach na bieg.<br>
-            <strong>Imię. Nazwisko. Miasto. Drużyna. Wiek. Płeć. Ostatni wynik.</strong><br>
+            <strong>Imię. Nazwisko. Miasto. Drużyna. Wiek. Płeć. Ostatni wynik i na jakim dystansie.</strong><br>
             W dowolnym formacie. Pisz swobodnie – my to ogarniemy.
         </p>
         """,
