@@ -15,7 +15,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 langfuse = Langfuse()
-llm_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+api_key = os.getenv("OPENAI_API_KEY")
+
+if not api_key:
+    raise ValueError("Brakuje klucza OPENAI_API_KEY w środowisku!")
+
+llm_client = OpenAI(api_key=api_key)
+
 
 def configure_clients():
     return langfuse  # już nie potrzebujesz instructor_client
