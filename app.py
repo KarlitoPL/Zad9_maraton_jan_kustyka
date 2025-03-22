@@ -44,9 +44,9 @@ def parse_input_with_gpt(user_text: str, langfuse_client) -> dict:
     system_prompt = (
         "Jesteś asystentem, który otrzymuje tekst użytkownika i ma za zadanie wyodrębnić dane oraz policzyć wynik zgodnie z poniższymi zasadami:\n"
         "\n"
-        "1) Użytkownik może podać dystans (w kilometrach lub metrach) oraz czas, w którym ten dystans pokonał (np. \"45 minut\", \"1h 30min\", \"01:35:00\").\n"
+        "1) Użytkownik może podać długość trasy np. 10 km, 600 metrów  oraz czas, w którym tą trase pokonał (np. \"45 minut\", \"1h 30min\", \"01:35:00\").\n"
         "\n"
-        "2) Oblicz średni czas w sekundach na 1 kilometr, a następnie przemnóż go przez 21.0975, aby otrzymać Czas_sec — prognozowany czas użytkownika na półmaraton:\n"
+        "2) Oblicz średni czas w sekundach z tego czasu i długości trasy na 1 kilometr, a następnie przemnóż ten czas w sekundach/1 km przez 21.0975, aby otrzymać Czas_sec — prognozowany czas użytkownika na półmaraton:\n"
         "   - Przykład: 10 km w 45 minut → 270 sekund/km → Czas_sec = 270 * 21.0975 = 5696 sekund.\n"
         "\n"
         "3) Jeśli nie da się wyodrębnić czasu lub dystansu, ustaw Czas_sec = 0.\n"
@@ -280,6 +280,9 @@ def main():
             st.warning("Nic nie wpisałeś!")
         else:
             gpt_result = parse_input_with_gpt(user_text, langfuse_client)
+
+            with st.expander("🔍 Zobacz, co zrozumiał GPT"):
+                st.json(gpt_result)
 
             
             if gpt_result["Czas_sec"] < 1800:
