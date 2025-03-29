@@ -230,8 +230,8 @@ def main():
     st.markdown(
         """
         <h2 style="color:#333; text-align:center; font-weight:300;">
-            <span style="color:#28a745; font-weight:500;">Jan Kuśtyka</span> spojrzy na Twój czas...
-            <br>... i powie Ci, co czeka Cię na kolejnym <strong style="color:#FF5733;">półmaratonie we Wrocławiu</strong>.
+            <span style="color:#28a745; font-weight:500;">Jan Kuśtyka</span> czekał na ciebie...
+            <br>Wpisz swoje dane i dowiedz się, co Cię czeka na kolejnym <strong style="color:#FF5733;">półmaratonie we Wrocławiu</strong>.
         </h2>
         """,
         unsafe_allow_html=True
